@@ -1,0 +1,26 @@
+# Android / Gradle
+*.iml
+.gradle
+/local.properties
+/.idea
+.DS_Store
+/build
+/app/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+*.hprof
+
+# 签名密钥与凭据（绝不提交）
+*.keystore
+*.jks
+release.keystore
+
+# 打包产物
+*.apk
+*.aab
+
+# 参考/构建脚本等本地文件
+/buildenv
+/astrbot_ref

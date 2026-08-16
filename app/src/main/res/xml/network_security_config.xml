@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  AstrBot 控制台通常运行在局域网内，使用 http 明文协议。
+  这里允许明文流量，以便通过 IP + 端口直连 AstrBot Dashboard。
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
