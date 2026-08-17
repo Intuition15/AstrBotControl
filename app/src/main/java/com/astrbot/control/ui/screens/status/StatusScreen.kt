@@ -8,35 +8,40 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Build
 import androidx.compose.material.icons.outlined.DeleteSweep
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.RestartAlt
 import androidx.compose.material.icons.outlined.SystemUpdate
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import com.astrbot.control.ui.Routes
-import com.astrbot.control.ui.components.ClickableCard
 import com.astrbot.control.ui.components.EmptyHint
-import com.astrbot.control.ui.components.ErrorBox
 import com.astrbot.control.ui.components.InfoRow
 import com.astrbot.control.ui.components.JsonView
 import com.astrbot.control.ui.components.LoadingBox
@@ -44,6 +49,8 @@ import com.astrbot.control.ui.components.ScreenScaffold
 import com.astrbot.control.ui.components.SectionTitle
 import com.astrbot.control.ui.components.rememberApi
 import com.astrbot.control.ui.vm.BaseVm
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import org.json.JSONObject
 
 class StatusVm(api: com.astrbot.control.data.ApiClient) : BaseVm(api) {
@@ -52,7 +59,12 @@ class StatusVm(api: com.astrbot.control.data.ApiClient) : BaseVm(api) {
     var stats by mutableStateOf<JSONObject?>(null)
     var storage by mutableStateOf<JSONObject?>(null)
     var loaded by mutableStateOf(false)
+    var live by mutableStateOf(false)
+    var lastRefresh by mutableStateOf("")
 
+    private var refreshJob: kotlinx.coroutines.Job? = null
+
+    /** 首次加载（带转圈） */
     fun load() {
         load {
             val rv = api.get("/api/v1/stats/version")
@@ -70,6 +82,45 @@ class StatusVm(api: com.astrbot.control.data.ApiClient) : BaseVm(api) {
             if (rst.ok) storage = rst.dataObj else error.value = rst.message ?: "获取存储信息失败"
             loaded = true
         }
+    }
+
+    /** 静默刷新统计（不闪转圈） */
+    fun refreshStats() {
+        viewModelScope.launch {
+            try {
+                val rs = api.get("/api/v1/stats")
+                if (rs.ok) {
+                    stats = rs.dataObj
+                    lastRefresh = java.text.SimpleDateFormat(
+                        "HH:mm:ss", java.util.Locale.getDefault()
+                    ).format(java.util.Date())
+                }
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    /** 启动每 5 秒自动刷新 */
+    fun startAutoRefresh() {
+        if (refreshJob?.isActive == true) return
+        live = true
+        refreshJob = viewModelScope.launch {
+            while (true) {
+                refreshStats()
+                delay(5000)
+            }
+        }
+    }
+
+    fun stopAutoRefresh() {
+        refreshJob?.cancel()
+        refreshJob = null
+        live = false
+    }
+
+    override fun onCleared() {
+        stopAutoRefresh()
+        super.onCleared()
     }
 
     fun restart() {
@@ -95,9 +146,23 @@ fun StatusScreen(navController: NavHostController) {
     val vm: StatusVm = viewModel { StatusVm(api) }
     val loading by vm.loading.collectAsState()
 
-    LaunchedEffect(Unit) { if (!vm.loaded) vm.load() }
+    LaunchedEffect(Unit) {
+        if (!vm.loaded) vm.load()
+        vm.startAutoRefresh()
+    }
+    DisposableEffect(Unit) {
+        onDispose { vm.stopAutoRefresh() }
+    }
 
-    ScreenScaffold(title = "状态概览", vm = vm) { padding ->
+    ScreenScaffold(
+        title = "状态概览",
+        vm = vm,
+        actions = {
+            IconButton(onClick = { vm.refreshStats() }) {
+                Icon(Icons.Outlined.Refresh, "立即刷新")
+            }
+        },
+    ) { padding ->
         Column(
             Modifier
                 .fillMaxSize()
@@ -106,6 +171,19 @@ fun StatusScreen(navController: NavHostController) {
         ) {
             LoadingBox(loading)
             if (loading) return@ScreenScaffold
+
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (vm.live) {
+                    CircularProgressIndicator(Modifier.size(12.dp), strokeWidth = 1.5.dp)
+                    Spacer(Modifier.size(6.dp))
+                    Text("每 5 秒自动刷新 · 上次 ${vm.lastRefresh.ifBlank { "—" }}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
 
             SectionTitle("服务器")
             Card(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
