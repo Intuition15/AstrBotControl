@@ -9,14 +9,19 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -51,6 +56,39 @@ class ProviderEditVm(
     var version by mutableStateOf(0)
     var saving by mutableStateOf(false)
     var loaded by mutableStateOf(false)
+    var fetchingModels by mutableStateOf(false)
+    var models by mutableStateOf<List<String>?>(null)
+    var showModels by mutableStateOf(false)
+    var selectedModel by mutableStateOf("")
+
+    /** 从中转站/OpenAI 兼容接口拉取可用模型列表 */
+    fun fetchModels() {
+        val cfg = config ?: return
+        val apiKey = cfg.optString("api_key").ifBlank { cfg.optString("key") }
+        val baseUrl = cfg.optString("base_url").ifBlank { cfg.optString("api_base") }
+        if (apiKey.isBlank() || baseUrl.isBlank()) {
+            error.value = "请先在下方填写 API Key 和 Base URL，再获取模型列表"
+            return
+        }
+        run {
+            fetchingModels = true
+            val list = api.fetchOpenAIModels(baseUrl, apiKey)
+            fetchingModels = false
+            if (list.isEmpty()) {
+                error.value = "未获取到模型：请检查 Base URL 与 API Key，并确认接口为 OpenAI 兼容格式（/v1/models）"
+            } else {
+                models = list
+                selectedModel = cfg.optString("model")
+                showModels = true
+            }
+        }
+    }
+
+    fun applyModel(m: String) {
+        config?.put("model", m)
+        version++
+        showModels = false
+    }
 
     fun load() {
         load {
@@ -203,6 +241,26 @@ fun ProviderEditScreen(navController: NavHostController, providerId: String?) {
                     excludeKeys = setOf("id", "name", "enable", "enabled", "type", "provider_type"),
                 )
             }
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(
+                onClick = { vm.fetchModels() },
+                enabled = !vm.fetchingModels,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                if (vm.fetchingModels) {
+                    androidx.compose.material3.CircularProgressIndicator(
+                        Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                    )
+                } else {
+                    Text("获取可用模型（中转站 / OpenAI 兼容）")
+                }
+            }
+            Text(
+                "填写好 API Key 与 Base URL 后可拉取该中转站的全部模型并选择。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             Spacer(Modifier.height(12.dp))
             Button(
                 onClick = { vm.save { navController.popBackStack() } },
@@ -213,6 +271,44 @@ fun ProviderEditScreen(navController: NavHostController, providerId: String?) {
             }
             Spacer(Modifier.height(16.dp))
         }
+    }
+
+    // 模型选择对话框
+    val modelList = vm.models
+    if (vm.showModels && modelList != null) {
+        AlertDialog(
+            onDismissRequest = { vm.showModels = false },
+            title = { Text("选择模型（共 ${modelList.size} 个）") },
+            text = {
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                        .height(360.dp),
+                ) {
+                    modelList.forEach { m ->
+                        val sel = vm.selectedModel == m
+                        Row(
+                            Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Checkbox(
+                                checked = sel,
+                                onCheckedChange = { if (it) vm.selectedModel = m },
+                            )
+                            Text(m, Modifier.weight(1f))
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { vm.applyModel(vm.selectedModel) },
+                    enabled = vm.selectedModel.isNotBlank(),
+                ) { Text("确定") }
+            },
+            dismissButton = { TextButton(onClick = { vm.showModels = false }) { Text("取消") } },
+        )
     }
 }
 

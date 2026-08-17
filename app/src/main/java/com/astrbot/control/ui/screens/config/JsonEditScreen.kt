@@ -216,6 +216,7 @@ fun JsonEditScreen(navController: NavHostController, key: String) {
                             metadata = vm.metadata!!,
                             version = vm.version,
                             onChanged = { vm.version++ },
+                            api = api,
                         )
                         Spacer(Modifier.padding(8.dp))
                         Button(

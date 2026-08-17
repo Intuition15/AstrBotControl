@@ -217,6 +217,41 @@ class ApiClient(private val context: Context, private val store: SettingsStore) 
     }
 
     /**
+     * 从中转站/OpenAI 兼容接口获取可用模型列表（GET {base}/models，Bearer 认证）。
+     * 依次尝试 {base}/models 与 {base}/v1/models。
+     */
+    suspend fun fetchOpenAIModels(baseUrl: String, apiKey: String): List<String> =
+        withContext(Dispatchers.IO) {
+            val candidates = listOf(
+                baseUrl.trim().trimEnd('/') + "/models",
+                baseUrl.trim().trimEnd('/') + "/v1/models",
+            )
+            for (url in candidates) {
+                val models: List<String>? = try {
+                    val rb = Request.Builder().url(url)
+                    if (apiKey.isNotBlank()) rb.header("Authorization", "Bearer $apiKey")
+                    http.newCall(rb.get().build()).execute().use { resp ->
+                        if (!resp.isSuccessful) {
+                            null
+                        } else {
+                            val body = try { resp.body?.string() } catch (_: Exception) { null }
+                            val arr = body?.let { runCatching { JSONObject(it).optJSONArray("data") }.getOrNull() }
+                            arr?.let { a ->
+                                (0 until a.length()).mapNotNull {
+                                    a.optJSONObject(it)?.optString("id")?.ifBlank { null }
+                                }
+                            }
+                        }
+                    }
+                } catch (_: Exception) {
+                    null
+                }
+                if (models != null && models.isNotEmpty()) return@withContext models
+            }
+            emptyList()
+        }
+
+    /**
      * SSE 流式读取（如实时日志）。返回 Call 以便调用方 cancel。
      */
     fun streamSse(
