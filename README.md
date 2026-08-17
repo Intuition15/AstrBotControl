@@ -89,17 +89,6 @@
 
 > 提示：release 签名凭据**不存放在代码库中**。构建 release 时请在 `local.properties`（已 gitignore）或环境变量中配置 `RELEASE_KEYSTORE` / `RELEASE_STORE_PASSWORD` / `RELEASE_KEY_ALIAS` / `RELEASE_KEY_PASSWORD`；未配置时仅 `assembleDebug` 可用。请自行生成并妥善保管你的签名密钥，泄露或丢失都会影响应用更新与安全。
 
-## 发布流程（每次更新产出两个 APK）
-
-| 产物 | 用途 | 签名 |
-| --- | --- | --- |
-| `AstrBotControl-vX.Y.Z.apk` | 自用安装 | 个人签名（`release.keystore`） |
-| `AstrBotControl-vX.Y.Z-release.apk` | 发布到 GitHub Releases | 发布签名（`release_public.keystore`） |
-
-- 自用版：`local.properties` 配置个人签名后 `./gradlew assembleRelease`
-- 发布版：设置环境变量 `RELEASE_KEYSTORE=release_public.keystore` / `RELEASE_STORE_PASSWORD` / `RELEASE_KEY_PASSWORD` 后 `./gradlew assembleRelease`
-- 两把密钥凭据均不入库；发布密钥务必妥善保管（丢失将无法为已发布版本提供更新）
-
 ## 免责声明
 
 本项目为第三方客户端，与 AstrBot 官方无关。AstrBot 接口可能随版本变化，如遇接口不兼容，请升级 AstrBot 或反馈问题。
